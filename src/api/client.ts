@@ -8,15 +8,32 @@ import { RateLimitError, ApiError } from "../utils/errors.js";
 import { logger } from "../utils/logger.js";
 
 /**
- * Gemini API Endpoint
+ * Standard Gemini API Endpoint
  */
-export const GEMINI_API_BASE_URL =
+const STANDARD_API_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
+
+/**
+ * Antigravity API Endpoint (sandbox)
+ */
+const ANTIGRAVITY_API_BASE_URL =
+  "https://daily-cloudcode-pa.sandbox.googleapis.com/v1/models";
 
 /**
  * Default model for Gemini API
  */
 export const DEFAULT_MODEL = "gemini-2.5-flash";
+
+/**
+ * Get API base URL based on model
+ * Gemini 3.0 models use Antigravity API, others use standard API
+ */
+function getApiBaseUrl(model: string): string {
+  if (model.startsWith("gemini-3.")) {
+    return ANTIGRAVITY_API_BASE_URL;
+  }
+  return STANDARD_API_BASE_URL;
+}
 
 /**
  * Maximum number of retries for network errors
@@ -174,8 +191,9 @@ class GeminiClientImpl implements GeminiClient {
           generationConfig: this.generationConfig,
         };
 
-        // Build API URL with model
-        const apiUrl = `${GEMINI_API_BASE_URL}/${model}:generateContent`;
+        // Build API URL with model (select endpoint based on model)
+        const apiBaseUrl = getApiBaseUrl(model);
+        const apiUrl = `${apiBaseUrl}/${model}:generateContent`;
 
         // Make API call
         const response = await fetch(apiUrl, {

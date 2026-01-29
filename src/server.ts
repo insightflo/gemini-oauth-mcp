@@ -56,24 +56,20 @@ const SERVER_NAME = "gemini-oauth";
 const SERVER_VERSION = "0.1.0";
 
 /**
- * OAuth Client ID (from environment or default)
+ * OAuth Credentials
  *
- * This is a public client ID for installed applications (Desktop App).
- * Users can override with their own Client ID via GEMINI_CLIENT_ID env var.
+ * Using Antigravity credentials as default since they work for both:
+ * - Standard Gemini API (2.5 models)
+ * - Antigravity API (3.0 models)
+ *
+ * Users can override with their own credentials via environment variables.
  */
 const OAUTH_CLIENT_ID =
   process.env.GEMINI_CLIENT_ID ??
-  "664875466264-pg8nf6a8sqvbr4m1t0oet8rt1qsuls64.apps.googleusercontent.com";
+  "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
 
-/**
- * OAuth Client Secret (from environment or default)
- *
- * Desktop App client secrets are considered "public" by Google.
- * Users can override with their own Client Secret via GEMINI_CLIENT_SECRET env var.
- */
 const OAUTH_CLIENT_SECRET =
-  process.env.GEMINI_CLIENT_SECRET ??
-  "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";
+  process.env.GEMINI_CLIENT_SECRET ?? "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";
 
 /**
  * Server dependencies (lazy initialized)
@@ -196,13 +192,16 @@ export function createServer(): McpServer {
     authLoginTool.name,
     {
       description: authLoginTool.description,
-      inputSchema: z.object({}),
+      inputSchema: z.object({
+        mode: z.enum(["standard", "antigravity"]).optional().describe("Auth mode: 'standard' for regular Gemini API (2.5 models), 'antigravity' for Gemini 3.0 (experimental). Default: standard"),
+      }),
     },
-    async () => {
+    async (args: { mode?: "standard" | "antigravity" }) => {
       const { accountManager, tokenManager } = await initializeDependencies();
       const response = await handleAuthLogin({
         accountManager,
         config: { clientId: OAUTH_CLIENT_ID, clientSecret: OAUTH_CLIENT_SECRET },
+        mode: args.mode ?? "standard",
       });
       // Clear token cache to ensure fresh account data is loaded
       if (!response.isError) {
@@ -404,7 +403,7 @@ export function createServer(): McpServer {
       inputSchema: z.object({}),
     },
     () => {
-      const response = handleUseModel("gemini-2.5-flash");
+      const response = handleUseModel("gemini-3.0-flash");
       return { content: response.content };
     }
   );
@@ -416,7 +415,7 @@ export function createServer(): McpServer {
       inputSchema: z.object({}),
     },
     () => {
-      const response = handleUseModel("gemini-2.5-pro");
+      const response = handleUseModel("gemini-3.0-pro");
       return { content: response.content };
     }
   );

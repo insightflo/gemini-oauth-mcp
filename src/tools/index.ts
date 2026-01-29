@@ -2,7 +2,7 @@
 // @SPEC Export all MCP tools for server registration
 
 export { authLoginTool, handleAuthLogin, formatAuthSuccess, formatAuthFailure } from "./auth.js";
-export type { ToolResponse } from "./auth.js";
+export type { ToolResponse, AuthMode } from "./auth.js";
 
 // @TASK P3-T2-T1 - Chat Tool
 export {

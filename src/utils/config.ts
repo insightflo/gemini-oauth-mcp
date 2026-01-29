@@ -11,9 +11,14 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 export const FALLBACK_DEFAULT_MODEL = "gemini-2.5-flash";
 
 /**
- * Available models list (Standard Gemini API)
+ * Available models list
+ *
+ * Gemini 3.0 models require Antigravity auth (mode="antigravity")
+ * Gemini 2.x and 1.x models work with standard auth (default)
  */
 export const AVAILABLE_MODELS = [
+  "gemini-3.0-flash",
+  "gemini-3.0-pro",
   "gemini-2.5-flash",
   "gemini-2.5-pro",
   "gemini-2.0-flash",

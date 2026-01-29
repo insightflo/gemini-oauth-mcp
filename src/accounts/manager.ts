@@ -26,10 +26,11 @@ export interface AccountManager {
    * Add a new account with refresh token and email
    * @param refreshToken - OAuth refresh token
    * @param email - Account email address
+   * @param authMode - Authentication mode (standard or antigravity)
    * @returns The created Account
    * @throws AuthenticationError if email already exists
    */
-  addAccount(refreshToken: string, email: string): Promise<Account>;
+  addAccount(refreshToken: string, email: string, authMode?: "standard" | "antigravity"): Promise<Account>;
 
   /**
    * Get account by ID
@@ -111,7 +112,7 @@ class AccountManagerImpl implements AccountManager {
     }
   }
 
-  async addAccount(refreshToken: string, email: string): Promise<Account> {
+  async addAccount(refreshToken: string, email: string, authMode: "standard" | "antigravity" = "standard"): Promise<Account> {
     await this.ensureInitialized();
 
     // Check for duplicate email
@@ -132,6 +133,7 @@ class AccountManagerImpl implements AccountManager {
       refreshToken,
       accessToken: null,
       accessTokenExpiry: null,
+      authMode,
       quota: {
         requestsRemaining: null,
         tokensRemaining: null,

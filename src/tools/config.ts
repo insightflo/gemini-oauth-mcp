@@ -174,6 +174,8 @@ export function handleModel(args: ModelInput): ToolResponse {
 Available models:
 ${AVAILABLE_MODELS.map((m) => `  ${m === currentModel ? "● " : "○ "}${m}`).join("\n")}
 
+Note: Gemini 3.0 models require auth_login mode="antigravity"
+
 Quick switch:
   use_flash    → gemini-2.5-flash (default)
   use_pro      → gemini-2.5-pro
@@ -203,12 +205,12 @@ Quick switch:
  */
 export const useFlashTool = {
   name: "use_flash",
-  description: "Switch to Gemini 2.5 Flash (fast, cost-effective) - default",
+  description: "Switch to Gemini 3.0 Flash (fast, cost-effective) - default",
 };
 
 export const useProTool = {
   name: "use_pro",
-  description: "Switch to Gemini 2.5 Pro (best reasoning, long context)",
+  description: "Switch to Gemini 3.0 Pro (best reasoning, long context)",
 };
 
 export const useFlash20Tool = {

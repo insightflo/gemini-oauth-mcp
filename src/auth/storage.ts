@@ -26,6 +26,7 @@ export const AccountSchema = z.object({
   refreshToken: z.string(),
   accessToken: z.string().nullable(),
   accessTokenExpiry: z.number().nullable(),
+  authMode: z.enum(["standard", "antigravity"]).optional().default("standard"),
   quota: QuotaStatusSchema,
   rateLimit: RateLimitStatusSchema,
   createdAt: z.number(),

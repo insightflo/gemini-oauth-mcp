@@ -5,6 +5,10 @@
 
 import { z } from "zod";
 import {
+  authorizeAntigravity,
+  exchangeAntigravity,
+} from "../auth/antigravity.js";
+import {
   generatePKCE,
   generateAuthUrl,
   exchangeCodeForTokens,
@@ -19,11 +23,16 @@ import { logger } from "../utils/logger.js";
 import * as http from "http";
 import * as crypto from "crypto";
 
+// Auth mode type
+export type AuthMode = "standard" | "antigravity";
+
 // Tool Definition
 export const authLoginTool = {
   name: "auth_login",
-  description: "Add a new Google account for Gemini API access",
-  inputSchema: z.object({}),
+  description: "Add a new Google account for Gemini API access. Use mode='antigravity' for Gemini 3.0 models (experimental).",
+  inputSchema: z.object({
+    mode: z.enum(["standard", "antigravity"]).optional().describe("Auth mode: 'standard' for regular Gemini API, 'antigravity' for Gemini 3.0 (experimental). Default: standard"),
+  }),
 };
 
 // Types
@@ -43,6 +52,7 @@ interface CallbackResult {
 interface HandleAuthLoginParams {
   accountManager: AccountManager;
   config: { clientId: string; clientSecret?: string };
+  mode?: AuthMode;
   testCallback?: CallbackResult;
   timeoutMs?: number;
 }
@@ -56,7 +66,9 @@ interface AuthFailureParams {
   reason: string;
 }
 
-// Google userinfo endpoint
+// Redirect URIs for different auth modes
+const ANTIGRAVITY_REDIRECT_URI = "http://localhost:51121/oauth-callback";
+// Google userinfo endpoint (for standard auth)
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
 /**
@@ -81,7 +93,7 @@ export function formatAuthFailure({ reason }: AuthFailureParams): string {
 }
 
 /**
- * Get user email from Google userinfo endpoint
+ * Get user email from Google userinfo endpoint (for standard auth)
  */
 async function getUserEmail(accessToken: string): Promise<string> {
   const response = await fetch(GOOGLE_USERINFO_URL, {
@@ -104,7 +116,8 @@ async function getUserEmail(accessToken: string): Promise<string> {
  * Start local callback server to receive OAuth redirect
  */
 function startCallbackServer(
-  expectedState: string,
+  mode: AuthMode,
+  expectedState: string | null,
   timeoutMs: number
 ): Promise<CallbackResult> {
   return new Promise((resolve) => {
@@ -118,13 +131,24 @@ function startCallbackServer(
         return;
       }
 
+      // Check path based on mode
+      const expectedPath = mode === "antigravity" ? "/oauth-callback" : "/";
+      if (url.pathname !== expectedPath && url.pathname !== "/") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
       const error = url.searchParams.get("error");
       const errorDescription = url.searchParams.get("error_description");
 
+      // Validate state for standard mode
+      const stateValid = mode === "antigravity" || !expectedState || state === expectedState;
+
       // Send response HTML
-      const isSuccess = code && state === expectedState;
+      const isSuccess = !!code && (mode === "antigravity" ? !!state : stateValid);
       const html = isSuccess
         ? `<!DOCTYPE html><html><head><title>Authentication Successful</title></head>
            <body style="font-family: system-ui; text-align: center; padding: 50px;">
@@ -134,7 +158,7 @@ function startCallbackServer(
         : `<!DOCTYPE html><html><head><title>Authentication Failed</title></head>
            <body style="font-family: system-ui; text-align: center; padding: 50px;">
            <h1>Authentication Failed</h1>
-           <p>${error ? `Error: ${errorDescription || error}` : "Invalid state parameter"}</p>
+           <p>${error ? `Error: ${errorDescription || error}` : !stateValid ? "Invalid state parameter" : "Missing authorization code"}</p>
            </body></html>`;
 
       res.writeHead(isSuccess ? 200 : 400, { "Content-Type": "text/html" });
@@ -145,15 +169,18 @@ function startCallbackServer(
 
       if (error) {
         resolve({ error, errorDescription: errorDescription ?? undefined });
-      } else if (code && state === expectedState) {
-        resolve({ code, state });
-      } else {
+      } else if (!stateValid) {
         resolve({ error: "invalid_state", errorDescription: "State mismatch" });
+      } else if (code && (mode === "antigravity" ? state : true)) {
+        resolve({ code, state: state ?? undefined });
+      } else {
+        resolve({ error: "missing_code", errorDescription: "No authorization code received" });
       }
     });
 
-    // Extract port from DEFAULT_REDIRECT_URI
-    const port = new URL(DEFAULT_REDIRECT_URI).port || "51121";
+    // Extract port from redirect URI
+    const redirectUri = mode === "antigravity" ? ANTIGRAVITY_REDIRECT_URI : DEFAULT_REDIRECT_URI;
+    const port = new URL(redirectUri).port || "51121";
 
     server.listen(parseInt(port, 10), () => {
       logger.debug("Callback server started", { port });
@@ -174,21 +201,14 @@ function startCallbackServer(
 /**
  * Handle auth_login tool execution
  *
- * OAuth Flow:
- * 1. Generate PKCE pair (code_verifier, code_challenge)
- * 2. Generate state for CSRF protection
- * 3. Build authorization URL
- * 4. Open browser (or return URL for user)
- * 5. Start local callback server
- * 6. Wait for callback with auth code
- * 7. Exchange code for tokens
- * 8. Get user email from userinfo
- * 9. Add account to manager
- * 10. Return success/failure message
+ * Supports two modes:
+ * - standard: Regular Google OAuth for standard Gemini API (2.5 models)
+ * - antigravity: Antigravity OAuth for Gemini 3.0 models (experimental)
  */
 export async function handleAuthLogin({
   accountManager,
   config,
+  mode = "standard",
   testCallback,
   timeoutMs = 300000, // 5 minutes default
 }: HandleAuthLoginParams): Promise<ToolResponse> {
@@ -196,161 +216,15 @@ export async function handleAuthLogin({
     // Initialize account manager if needed
     await accountManager.initialize();
 
-    // Generate PKCE pair
-    const pkce = generatePKCE();
-
-    // Generate state for CSRF protection
-    const state = crypto.randomBytes(16).toString("hex");
-
-    // Generate authorization URL
-    const authUrl = generateAuthUrl({
-      clientId: config.clientId,
-      redirectUri: DEFAULT_REDIRECT_URI,
-      codeChallenge: pkce.codeChallenge,
-      state,
-    });
-
-    logger.info("Starting OAuth flow", { authUrl });
-
-    // For testing: use provided callback result
-    let callbackResult: CallbackResult;
-    if (testCallback) {
-      callbackResult = testCallback;
+    if (mode === "antigravity") {
+      return handleAntigravityAuth({ accountManager, testCallback, timeoutMs });
     } else {
-      // Open browser
-      const open = (await import("open")).default as (url: string) => Promise<unknown>;
-      await open(authUrl);
-
-      // Wait for callback
-      callbackResult = await startCallbackServer(state, timeoutMs);
+      return handleStandardAuth({ accountManager, config, testCallback, timeoutMs });
     }
-
-    // Handle timeout
-    if (callbackResult.timeout) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: formatAuthFailure({ reason: "Authentication timed out" }),
-          },
-        ],
-      };
-    }
-
-    // Handle error from OAuth provider
-    if (callbackResult.error) {
-      const reason =
-        callbackResult.errorDescription ||
-        (callbackResult.error === "access_denied"
-          ? "User denied access"
-          : callbackResult.error);
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: formatAuthFailure({ reason }),
-          },
-        ],
-      };
-    }
-
-    // Exchange code for tokens
-    if (!callbackResult.code) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: formatAuthFailure({ reason: "No authorization code received" }),
-          },
-        ],
-      };
-    }
-
-    let tokens;
-    try {
-      tokens = await exchangeCodeForTokens({
-        code: callbackResult.code,
-        codeVerifier: pkce.codeVerifier,
-        clientId: config.clientId,
-        clientSecret: config.clientSecret,
-        redirectUri: DEFAULT_REDIRECT_URI,
-      });
-    } catch (error) {
-      const message =
-        error instanceof OAuthError
-          ? error.message  // Use full message with error_description
-          : error instanceof Error
-            ? error.message
-            : "Unknown error";
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: formatAuthFailure({ reason: message }),
-          },
-        ],
-      };
-    }
-
-    // Get user email
-    let email: string;
-    try {
-      email = await getUserEmail(tokens.accessToken);
-    } catch {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: formatAuthFailure({
-              reason: "Failed to get user email from Google",
-            }),
-          },
-        ],
-      };
-    }
-
-    // Add account
-    try {
-      await accountManager.addAccount(tokens.refreshToken, email);
-    } catch (error) {
-      if (error instanceof AuthenticationError) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: formatAuthFailure({
-                reason: `Account already exists: ${email}`,
-              }),
-            },
-          ],
-        };
-      }
-      throw error;
-    }
-
-    // Get total accounts for message
-    const totalAccounts = accountManager.getAccounts().length;
-
-    logger.info("OAuth flow completed successfully", { email, totalAccounts });
-
-    return {
-      isError: false,
-      content: [
-        {
-          type: "text",
-          text: formatAuthSuccess({ email, totalAccounts }),
-        },
-      ],
-    };
   } catch (error) {
     logger.error("OAuth flow failed", {
       error: error instanceof Error ? error.message : "Unknown error",
+      mode,
     });
 
     return {
@@ -365,6 +239,295 @@ export async function handleAuthLogin({
       ],
     };
   }
+}
+
+/**
+ * Handle standard Google OAuth flow
+ */
+async function handleStandardAuth({
+  accountManager,
+  config,
+  testCallback,
+  timeoutMs = 300000,
+}: HandleAuthLoginParams): Promise<ToolResponse> {
+  // Generate PKCE pair
+  const pkce = generatePKCE();
+
+  // Generate state for CSRF protection
+  const state = crypto.randomBytes(16).toString("hex");
+
+  // Generate authorization URL
+  const authUrl = generateAuthUrl({
+    clientId: config.clientId,
+    redirectUri: DEFAULT_REDIRECT_URI,
+    codeChallenge: pkce.codeChallenge,
+    state,
+  });
+
+  logger.info("Starting standard OAuth flow", { authUrl });
+
+  // For testing: use provided callback result
+  let callbackResult: CallbackResult;
+  if (testCallback) {
+    callbackResult = testCallback;
+  } else {
+    // Open browser
+    const open = (await import("open")).default as (url: string) => Promise<unknown>;
+    await open(authUrl);
+
+    // Wait for callback
+    callbackResult = await startCallbackServer("standard", state, timeoutMs);
+  }
+
+  // Handle timeout
+  if (callbackResult.timeout) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({ reason: "Authentication timed out" }),
+        },
+      ],
+    };
+  }
+
+  // Handle error from OAuth provider
+  if (callbackResult.error) {
+    const reason =
+      callbackResult.errorDescription ||
+      (callbackResult.error === "access_denied"
+        ? "User denied access"
+        : callbackResult.error);
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({ reason }),
+        },
+      ],
+    };
+  }
+
+  // Exchange code for tokens
+  if (!callbackResult.code) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({ reason: "No authorization code received" }),
+        },
+      ],
+    };
+  }
+
+  let tokens;
+  try {
+    tokens = await exchangeCodeForTokens({
+      code: callbackResult.code,
+      codeVerifier: pkce.codeVerifier,
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      redirectUri: DEFAULT_REDIRECT_URI,
+    });
+  } catch (error) {
+    const message =
+      error instanceof OAuthError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : "Unknown error";
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({ reason: message }),
+        },
+      ],
+    };
+  }
+
+  // Get user email
+  let email: string;
+  try {
+    email = await getUserEmail(tokens.accessToken);
+  } catch {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({
+            reason: "Failed to get user email from Google",
+          }),
+        },
+      ],
+    };
+  }
+
+  // Add account
+  try {
+    await accountManager.addAccount(tokens.refreshToken, email, "standard");
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: formatAuthFailure({
+              reason: `Account already exists: ${email}`,
+            }),
+          },
+        ],
+      };
+    }
+    throw error;
+  }
+
+  // Get total accounts for message
+  const totalAccounts = accountManager.getAccounts().length;
+
+  logger.info("Standard OAuth flow completed successfully", { email, totalAccounts });
+
+  return {
+    isError: false,
+    content: [
+      {
+        type: "text",
+        text: formatAuthSuccess({ email, totalAccounts }),
+      },
+    ],
+  };
+}
+
+/**
+ * Handle Antigravity OAuth flow (for Gemini 3.0)
+ */
+async function handleAntigravityAuth({
+  accountManager,
+  testCallback,
+  timeoutMs = 300000,
+}: Omit<HandleAuthLoginParams, "config" | "mode">): Promise<ToolResponse> {
+  // Generate authorization URL using Antigravity OAuth
+  const authInfo = await authorizeAntigravity();
+
+  logger.info("Starting Antigravity OAuth flow", { url: authInfo.url });
+
+  // For testing: use provided callback result
+  let callbackResult: CallbackResult;
+  if (testCallback) {
+    callbackResult = testCallback;
+  } else {
+    // Open browser
+    const open = (await import("open")).default as (url: string) => Promise<unknown>;
+    await open(authInfo.url);
+
+    // Wait for callback
+    callbackResult = await startCallbackServer("antigravity", null, timeoutMs);
+  }
+
+  // Handle timeout
+  if (callbackResult.timeout) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({ reason: "Authentication timed out" }),
+        },
+      ],
+    };
+  }
+
+  // Handle error from OAuth provider
+  if (callbackResult.error) {
+    const reason =
+      callbackResult.errorDescription ||
+      (callbackResult.error === "access_denied"
+        ? "User denied access"
+        : callbackResult.error);
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({ reason }),
+        },
+      ],
+    };
+  }
+
+  // Exchange code for tokens
+  if (!callbackResult.code || !callbackResult.state) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({ reason: "No authorization code received" }),
+        },
+      ],
+    };
+  }
+
+  // Exchange code for tokens using Antigravity
+  const exchangeResult = await exchangeAntigravity(
+    callbackResult.code,
+    callbackResult.state
+  );
+
+  if (exchangeResult.type === "failed") {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: formatAuthFailure({ reason: exchangeResult.error }),
+        },
+      ],
+    };
+  }
+
+  const email = exchangeResult.email ?? "unknown@gmail.com";
+
+  // Add account
+  try {
+    await accountManager.addAccount(exchangeResult.refresh, email, "antigravity");
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: formatAuthFailure({
+              reason: `Account already exists: ${email}`,
+            }),
+          },
+        ],
+      };
+    }
+    throw error;
+  }
+
+  // Get total accounts for message
+  const totalAccounts = accountManager.getAccounts().length;
+
+  logger.info("Antigravity OAuth flow completed successfully", { email, totalAccounts });
+
+  return {
+    isError: false,
+    content: [
+      {
+        type: "text",
+        text: formatAuthSuccess({ email, totalAccounts }),
+      },
+    ],
+  };
 }
 
 // ============================================================================

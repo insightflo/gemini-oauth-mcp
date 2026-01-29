@@ -6,8 +6,11 @@ import * as crypto from "crypto";
 // OAuth 상수
 const GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
-const GEMINI_SCOPE = "https://www.googleapis.com/auth/generative-language.tuning https://www.googleapis.com/auth/userinfo.email";
 export const DEFAULT_REDIRECT_URI = "http://localhost:51121";
+
+// Scopes for different modes
+export const STANDARD_GEMINI_SCOPE = "https://www.googleapis.com/auth/generative-language.tuning https://www.googleapis.com/auth/userinfo.email";
+export const ANTIGRAVITY_SCOPE = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email";
 
 // Types
 export interface PKCEPair {
@@ -20,6 +23,7 @@ export interface OAuthConfig {
   redirectUri: string;
   codeChallenge: string;
   state: string;
+  scope?: string;
 }
 
 export interface TokenExchangeParams {
@@ -71,7 +75,7 @@ export function generateAuthUrl(config: OAuthConfig): string {
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: "code",
-    scope: GEMINI_SCOPE,
+    scope: config.scope ?? STANDARD_GEMINI_SCOPE,
     access_type: "offline",
     prompt: "consent",
     code_challenge: config.codeChallenge,
