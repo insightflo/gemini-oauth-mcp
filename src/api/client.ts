@@ -16,7 +16,7 @@ export const GEMINI_API_BASE_URL =
 /**
  * Default model for Gemini API
  */
-export const DEFAULT_MODEL = "gemini-2.0-flash";
+export const DEFAULT_MODEL = "gemini-2.5-flash";
 
 /**
  * Maximum number of retries for network errors
@@ -168,8 +168,8 @@ class GeminiClientImpl implements GeminiClient {
         // Get access token for this account
         const accessToken = await this.tokenManager.getAccessToken(account.id);
 
-        // Build request (model is in URL, not body for Gemini API)
-        const request = {
+        // Build request
+        const request: GeminiRequest = {
           contents,
           generationConfig: this.generationConfig,
         };

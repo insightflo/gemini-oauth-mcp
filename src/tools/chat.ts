@@ -5,11 +5,7 @@ import { z } from "zod";
 import type { GeminiClient } from "../api/client.js";
 import type { AccountRotator } from "../accounts/rotator.js";
 import { RateLimitError } from "../utils/errors.js";
-
-/**
- * Default model for chat tool
- */
-export const DEFAULT_CHAT_MODEL = "gemini-2.5-flash";
+import { getDefaultModel } from "../utils/config.js";
 
 /**
  * Maximum retry attempts for rate limit
@@ -21,7 +17,7 @@ const MAX_RATE_LIMIT_RETRIES = 3;
  */
 export const chatInputSchema = z.object({
   message: z.string().min(1).describe("The message to send"),
-  model: z.string().optional().describe("Model name (default: gemini-2.5-flash)"),
+  model: z.string().optional().describe("Model name (default: gemini-3.0-flash)"),
 });
 
 /**
@@ -116,7 +112,7 @@ export async function handleChat(
   args: ChatInput,
   context: ChatToolContext
 ): Promise<ToolResponse> {
-  const { message, model = DEFAULT_CHAT_MODEL } = args;
+  const { message, model = getDefaultModel() } = args;
   const { client, rotator, getCurrentEmail } = context;
 
   let retryCount = 0;

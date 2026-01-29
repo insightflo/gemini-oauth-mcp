@@ -5,11 +5,7 @@ import { z } from "zod";
 import type { GeminiClient } from "../api/client.js";
 import type { AccountRotator } from "../accounts/rotator.js";
 import { RateLimitError } from "../utils/errors.js";
-
-/**
- * Default model for generate_content tool
- */
-export const DEFAULT_GENERATE_MODEL = "gemini-2.5-flash";
+import { getDefaultModel } from "../utils/config.js";
 
 /**
  * Maximum retry attempts for rate limit
@@ -24,7 +20,7 @@ export const generateContentInputSchema = z.object({
   model: z
     .string()
     .optional()
-    .describe("Model name (default: gemini-2.5-flash)"),
+    .describe("Model name (default: gemini-3.0-flash)"),
 });
 
 /**
@@ -114,7 +110,7 @@ export async function handleGenerateContent(
   args: GenerateContentInput,
   context: GenerateToolContext
 ): Promise<ToolResponse> {
-  const { prompt, model = DEFAULT_GENERATE_MODEL } = args;
+  const { prompt, model = getDefaultModel() } = args;
   const { client, rotator, getCurrentEmail } = context;
 
   let retryCount = 0;

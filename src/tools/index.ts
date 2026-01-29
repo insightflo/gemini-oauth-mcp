@@ -10,7 +10,6 @@ export {
   handleChat,
   formatChatResponse,
   formatModelDisplayName,
-  DEFAULT_CHAT_MODEL,
 } from "./chat.js";
 export type { ChatInput, ChatToolContext } from "./chat.js";
 
@@ -19,6 +18,24 @@ export {
   generateContentTool,
   handleGenerateContent,
   formatGenerateResponse,
-  DEFAULT_GENERATE_MODEL,
 } from "./generate.js";
 export type { GenerateContentInput, GenerateToolContext } from "./generate.js";
+
+// Config Tools
+export {
+  configGetTool,
+  configSetTool,
+  handleConfigGet,
+  handleConfigSet,
+  modelTool,
+  handleModel,
+  useFlashTool,
+  useProTool,
+  useFlash20Tool,
+  useFlash15Tool,
+  usePro15Tool,
+  handleUseModel,
+  geminiGenerateTextTool,
+  geminiGenerateTextInputSchema,
+} from "./config.js";
+export type { ConfigSetInput, ModelInput, GeminiGenerateTextInput } from "./config.js";

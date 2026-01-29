@@ -56,6 +56,10 @@ export OAUTH_PORT=51121
 # 로그 레벨 (기본값: info)
 # 가능한 값: debug, info, warn, error
 export LOG_LEVEL=info
+
+# 기본 모델 (기본값: gemini-3.0-flash)
+# 가능한 값: gemini-3.0-flash, gemini-3.0-pro, gemini-2.5-flash, gemini-2.5-pro
+export GEMINI_DEFAULT_MODEL=gemini-3.0-flash
 ```
 
 ## MCP 설정
@@ -224,13 +228,13 @@ Authentication Status
 
 **파라미터:**
 - `message` (string, 필수): 전송할 메시지
-- `model` (string, 선택): 사용할 모델명 (기본값: `gemini-2.5-flash`)
+- `model` (string, 선택): 사용할 모델명 (기본값: `gemini-3.0-flash`)
 
 **지원 모델:**
-- `gemini-2.5-flash` - 빠르고 비용 효율적 (기본값)
-- `gemini-2.5-pro` - 더 강력한 성능
-- `gemini-1.5-flash` - 장 컨텍스트 처리
-- `gemini-1.5-pro` - 고급 분석
+- `gemini-3.0-flash` - Pro급 성능의 빠른 모델 (기본값)
+- `gemini-3.0-pro` - 최고급 추론 및 에이전틱 워크플로우
+- `gemini-2.5-flash` - 빠르고 비용 효율적
+- `gemini-2.5-pro` - 긴 컨텍스트 안정성
 
 **응답 예시:**
 ```
@@ -265,7 +269,7 @@ Rate Limit(429)이 발생하면 자동으로 다음 계정으로 전환됩니다
 
 **파라미터:**
 - `prompt` (string, 필수): 콘텐츠 생성 프롬프트
-- `model` (string, 선택): 사용할 모델명 (기본값: `gemini-2.5-flash`)
+- `model` (string, 선택): 사용할 모델명 (기본값: `gemini-3.0-flash`)
 
 **응답 예시:**
 ```
@@ -285,6 +289,59 @@ Rate Limit(429)이 발생하면 자동으로 다음 계정으로 전환됩니다
 
 **Rate Limit 처리:**
 `chat` 도구와 동일한 자동 계정 전환 메커니즘 적용됩니다.
+
+### 설정 확인
+
+`config_get` 도구로 현재 설정을 확인합니다.
+
+```
+사용자: 현재 설정을 보여줘
+```
+
+**응답 예시:**
+```
+Current Configuration
+═══════════════════════════════════════════════════════════
+
+  Setting         Value
+  ──────────────  ──────────────────────────────────────────
+
+  Default Model   gemini-3.0-flash
+  Config Path     /Users/user/.config/gemini-oauth-mcp
+
+═══════════════════════════════════════════════════════════
+
+Available Models:
+  1. gemini-3.0-flash (current)
+  2. gemini-3.0-pro
+  3. gemini-2.5-flash
+  4. gemini-2.5-pro
+```
+
+### 기본 모델 변경
+
+`config_set` 도구로 기본 모델을 변경합니다.
+
+```
+사용자: 기본 모델을 gemini-3.0-pro로 변경해줘
+```
+
+**파라미터:**
+- `key` (string, 필수): 설정 키 (`default_model`)
+- `value` (string, 필수): 설정 값
+
+**응답 예시:**
+```
+✓ Default model set to: gemini-3.0-pro
+
+This setting is saved and will persist across sessions.
+```
+
+**지원 모델:**
+- `gemini-3.0-flash` - Pro급 성능의 빠른 모델 (기본값)
+- `gemini-3.0-pro` - 최고급 추론 및 에이전틱 워크플로우
+- `gemini-2.5-flash` - 빠르고 비용 효율적
+- `gemini-2.5-pro` - 긴 컨텍스트 안정성
 
 ### 할당량 확인
 
@@ -609,6 +666,8 @@ npm run typecheck
 | `chat` | `message`, `model?` | 대화형 응답 |
 | `generate_content` | `prompt`, `model?` | 콘텐츠 생성 |
 | `quota_status` | 없음 | 할당량 현황 |
+| `config_get` | 없음 | 현재 설정 확인 |
+| `config_set` | `key`, `value` | 설정 변경 (기본 모델 등) |
 
 ### 응답 형식
 

@@ -20,6 +20,25 @@ import {
   type GenerateContentInput,
 } from "./tools/generate.js";
 import { quotaStatusTool, handleQuotaStatus } from "./tools/quota.js";
+import {
+  configGetTool,
+  configSetTool,
+  handleConfigGet,
+  handleConfigSet,
+  modelTool,
+  handleModel,
+  useFlashTool,
+  useProTool,
+  useFlash20Tool,
+  useFlash15Tool,
+  usePro15Tool,
+  handleUseModel,
+  geminiGenerateTextTool,
+  type ConfigSetInput,
+  type ModelInput,
+  type GeminiGenerateTextInput,
+} from "./tools/config.js";
+import { AVAILABLE_MODELS } from "./utils/config.js";
 import { AccountStorage } from "./auth/storage.js";
 import { createAccountManager, type AccountManager } from "./accounts/manager.js";
 import { createAccountRotator, type AccountRotator } from "./accounts/rotator.js";
@@ -80,10 +99,10 @@ async function initializeDependencies(): Promise<ServerDependencies> {
   }
 
   const configPath = getConfigPath();
-  const storagePath = path.join(configPath, "accounts.json");
 
   // Initialize storage and manager
-  const storage = new AccountStorage(storagePath);
+  // Note: AccountStorage appends "accounts.json" internally
+  const storage = new AccountStorage(configPath);
   const accountManager = createAccountManager(storage);
   await accountManager.initialize();
 
@@ -180,11 +199,15 @@ export function createServer(): McpServer {
       inputSchema: z.object({}),
     },
     async () => {
-      const { accountManager } = await initializeDependencies();
+      const { accountManager, tokenManager } = await initializeDependencies();
       const response = await handleAuthLogin({
         accountManager,
         config: { clientId: OAUTH_CLIENT_ID, clientSecret: OAUTH_CLIENT_SECRET },
       });
+      // Clear token cache to ensure fresh account data is loaded
+      if (!response.isError) {
+        tokenManager.clearCache();
+      }
       return {
         content: response.content,
         isError: response.isError,
@@ -222,8 +245,12 @@ export function createServer(): McpServer {
       }),
     },
     async (args: { account_id: string }) => {
-      const { accountManager } = await initializeDependencies();
+      const { accountManager, tokenManager } = await initializeDependencies();
       const response = handleAuthRemove(args, { accountManager });
+      // Clear token cache to ensure fresh account data is loaded
+      if (!response.isError) {
+        tokenManager.clearCache();
+      }
       return {
         content: response.content,
         isError: response.isError,
@@ -258,7 +285,7 @@ export function createServer(): McpServer {
       description: chatTool.description,
       inputSchema: z.object({
         message: z.string().describe("The message to send"),
-        model: z.string().optional().describe("Model name (default: gemini-2.5-flash)"),
+        model: z.string().optional().describe("Model name (default: gemini-3.0-flash)"),
       }),
     },
     async (args: ChatInput) => {
@@ -282,7 +309,7 @@ export function createServer(): McpServer {
       description: generateContentTool.description,
       inputSchema: z.object({
         prompt: z.string().describe("The prompt for content generation"),
-        model: z.string().optional().describe("Model name (default: gemini-2.5-flash)"),
+        model: z.string().optional().describe("Model name (default: gemini-3.0-flash)"),
       }),
     },
     async (args: GenerateContentInput) => {
@@ -311,6 +338,148 @@ export function createServer(): McpServer {
       const response = handleQuotaStatus({ quotaTracker });
       return {
         content: response.content,
+      };
+    }
+  );
+
+  // Register config_get tool
+  server.registerTool(
+    configGetTool.name,
+    {
+      description: configGetTool.description,
+      inputSchema: z.object({}),
+    },
+    () => {
+      const response = handleConfigGet();
+      return {
+        content: response.content,
+      };
+    }
+  );
+
+  // Register config_set tool
+  server.registerTool(
+    configSetTool.name,
+    {
+      description: configSetTool.description,
+      inputSchema: z.object({
+        key: z.enum(["default_model"]).describe("Configuration key to set"),
+        value: z.string().describe("Value to set. Models: " + AVAILABLE_MODELS.join(", ")),
+      }),
+    },
+    (args: ConfigSetInput) => {
+      const response = handleConfigSet(args);
+      return {
+        content: response.content,
+        isError: response.isError,
+      };
+    }
+  );
+
+  // Register model tool (simple model selector)
+  server.registerTool(
+    modelTool.name,
+    {
+      description: modelTool.description,
+      inputSchema: z.object({
+        name: z
+          .enum(AVAILABLE_MODELS as unknown as [string, ...string[]])
+          .optional()
+          .describe("Model to set as default"),
+      }),
+    },
+    (args: ModelInput) => {
+      const response = handleModel(args);
+      return {
+        content: response.content,
+      };
+    }
+  );
+
+  // Register shortcut tools for quick model switching
+  server.registerTool(
+    useFlashTool.name,
+    {
+      description: useFlashTool.description,
+      inputSchema: z.object({}),
+    },
+    () => {
+      const response = handleUseModel("gemini-2.5-flash");
+      return { content: response.content };
+    }
+  );
+
+  server.registerTool(
+    useProTool.name,
+    {
+      description: useProTool.description,
+      inputSchema: z.object({}),
+    },
+    () => {
+      const response = handleUseModel("gemini-2.5-pro");
+      return { content: response.content };
+    }
+  );
+
+  server.registerTool(
+    useFlash20Tool.name,
+    {
+      description: useFlash20Tool.description,
+      inputSchema: z.object({}),
+    },
+    () => {
+      const response = handleUseModel("gemini-2.0-flash");
+      return { content: response.content };
+    }
+  );
+
+  server.registerTool(
+    useFlash15Tool.name,
+    {
+      description: useFlash15Tool.description,
+      inputSchema: z.object({}),
+    },
+    () => {
+      const response = handleUseModel("gemini-1.5-flash");
+      return { content: response.content };
+    }
+  );
+
+  server.registerTool(
+    usePro15Tool.name,
+    {
+      description: usePro15Tool.description,
+      inputSchema: z.object({}),
+    },
+    () => {
+      const response = handleUseModel("gemini-1.5-pro");
+      return { content: response.content };
+    }
+  );
+
+  // Register gemini_generate_text (legacy alias for generate_content)
+  server.registerTool(
+    geminiGenerateTextTool.name,
+    {
+      description: geminiGenerateTextTool.description,
+      inputSchema: z.object({
+        prompt: z.string().describe("The prompt for text generation"),
+        model: z.string().optional().describe("Model name (default: gemini-3.0-flash)"),
+      }),
+    },
+    async (args: GeminiGenerateTextInput) => {
+      const { client, rotator } = await initializeDependencies();
+      const response = await handleGenerateContent(
+        { prompt: args.prompt, model: args.model },
+        {
+          client,
+          rotator,
+          getCurrentEmail: () => getCurrentEmail(rotator),
+        }
+      );
+      return {
+        content: response.content,
+        isError: response.isError,
       };
     }
   );
