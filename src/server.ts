@@ -37,19 +37,24 @@ const SERVER_NAME = "gemini-oauth";
 const SERVER_VERSION = "0.1.0";
 
 /**
- * Google OAuth Client ID (from environment or default)
+ * OAuth Client ID (from environment or default)
  *
- * This is a public client ID for installed applications.
- * Users can override with their own Client ID via GOOGLE_CLIENT_ID env var.
+ * This is a public client ID for installed applications (Desktop App).
+ * Users can override with their own Client ID via GEMINI_CLIENT_ID env var.
  */
-const GOOGLE_CLIENT_ID =
-  process.env.GOOGLE_CLIENT_ID ??
-  "590546207341-0d8s1spi7mi1jc6mhe3e2bs1gu10jd2d.apps.googleusercontent.com";
+const OAUTH_CLIENT_ID =
+  process.env.GEMINI_CLIENT_ID ??
+  "664875466264-pg8nf6a8sqvbr4m1t0oet8rt1qsuls64.apps.googleusercontent.com";
 
 /**
- * Google OAuth Client Secret (from environment, optional for some flows)
+ * OAuth Client Secret (from environment or default)
+ *
+ * Desktop App client secrets are considered "public" by Google.
+ * Users can override with their own Client Secret via GEMINI_CLIENT_SECRET env var.
  */
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const OAUTH_CLIENT_SECRET =
+  process.env.GEMINI_CLIENT_SECRET ??
+  "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";
 
 /**
  * Server dependencies (lazy initialized)
@@ -86,7 +91,7 @@ async function initializeDependencies(): Promise<ServerDependencies> {
   const rotator = createAccountRotator(accountManager);
 
   // Initialize token manager
-  const tokenManager = createTokenManager(storage, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+  const tokenManager = createTokenManager(storage, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET);
 
   // Initialize quota tracker
   const quotaTracker = createQuotaTracker(accountManager);
@@ -110,7 +115,7 @@ async function initializeDependencies(): Promise<ServerDependencies> {
 
   logger.info("Server dependencies initialized", {
     accountCount: accountManager.getAccounts().length,
-    clientId: GOOGLE_CLIENT_ID.substring(0, 20) + "...",
+    clientId: OAUTH_CLIENT_ID.substring(0, 20) + "...",
   });
 
   return deps;
@@ -178,7 +183,7 @@ export function createServer(): McpServer {
       const { accountManager } = await initializeDependencies();
       const response = await handleAuthLogin({
         accountManager,
-        config: { clientId: GOOGLE_CLIENT_ID, clientSecret: GOOGLE_CLIENT_SECRET },
+        config: { clientId: OAUTH_CLIENT_ID, clientSecret: OAUTH_CLIENT_SECRET },
       });
       return {
         content: response.content,
@@ -316,4 +321,4 @@ export function createServer(): McpServer {
 /**
  * Export server constants for testing
  */
-export { SERVER_NAME, SERVER_VERSION, GOOGLE_CLIENT_ID };
+export { SERVER_NAME, SERVER_VERSION, OAUTH_CLIENT_ID };
