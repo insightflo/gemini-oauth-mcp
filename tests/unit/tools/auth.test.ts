@@ -219,10 +219,11 @@ describe("auth_login Tool", () => {
         testCallback: mockCallbackResult,
       });
 
-      expect(mockAccountManager.addAccount).toHaveBeenCalledWith(
-        "test-refresh-token",
-        "user@gmail.com"
-      );
+      expect(mockAccountManager.addAccount).toHaveBeenCalledWith({
+        refreshToken: "test-refresh-token",
+        email: "user@gmail.com",
+        authMode: "standard",
+      });
     });
   });
 

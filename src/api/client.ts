@@ -7,32 +7,31 @@ import { QuotaTracker } from "../accounts/quota.js";
 import { RateLimitError, ApiError } from "../utils/errors.js";
 import { logger } from "../utils/logger.js";
 
-/**
- * Standard Gemini API Endpoint
- */
 const STANDARD_API_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
-/**
- * Antigravity API Endpoint (sandbox)
- */
-const ANTIGRAVITY_API_BASE_URL =
-  "https://daily-cloudcode-pa.sandbox.googleapis.com/v1/models";
+const ANTIGRAVITY_API_BASE_URLS = [
+  "https://daily-cloudcode-pa.googleapis.com",
+  "https://cloudcode-pa.googleapis.com",
+  "https://daily-cloudcode-pa.sandbox.googleapis.com",
+];
 
-/**
- * Default model for Gemini API
- */
 export const DEFAULT_MODEL = "gemini-2.5-flash";
 
-/**
- * Get API base URL based on model
- * Gemini 3.0 models use Antigravity API, others use standard API
- */
-function getApiBaseUrl(model: string): string {
-  if (model.startsWith("gemini-3.")) {
-    return ANTIGRAVITY_API_BASE_URL;
-  }
-  return STANDARD_API_BASE_URL;
+function isAntigravityModel(model: string): boolean {
+  return model.startsWith("gemini-3") || model.startsWith("claude-");
+}
+
+function generateRequestId(): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 8);
+  return `req_${timestamp}_${random}`;
+}
+
+function generateSessionId(): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 8);
+  return `sess_${timestamp}_${random}`;
 }
 
 /**
@@ -71,21 +70,14 @@ export interface GenerationConfig {
  */
 export type DelayFn = (ms: number) => Promise<void>;
 
-/**
- * Client configuration options
- */
 export interface GeminiClientConfig {
   tokenManager: TokenManager;
   rotator: AccountRotator;
   quotaTracker: QuotaTracker;
   generationConfig?: GenerationConfig;
-  /** Custom delay function for testing */
   delayFn?: DelayFn;
 }
 
-/**
- * Gemini API request format
- */
 interface GeminiRequest {
   contents: Array<{
     role: string;
@@ -94,9 +86,26 @@ interface GeminiRequest {
   generationConfig?: GenerationConfig;
 }
 
-/**
- * Gemini API response format
- */
+interface AntigravityRequest {
+  project: string;
+  requestId: string;
+  model: string;
+  userAgent: string;
+  requestType: string;
+  request: {
+    contents: Array<{
+      role: string;
+      parts: Array<{ text: string }>;
+    }>;
+    session_id: string;
+    generationConfig: {
+      responseModalities: string[];
+      temperature: number;
+      maxOutputTokens: number;
+    };
+  };
+}
+
 interface GeminiResponse {
   candidates?: Array<{
     content?: {
@@ -108,30 +117,21 @@ interface GeminiResponse {
   };
 }
 
-/**
- * GeminiClient interface for interacting with Gemini API
- */
-export interface GeminiClient {
-  /**
-   * Generate content from a single prompt
-   * @param prompt - The prompt text
-   * @param model - Optional model override
-   * @returns Generated text response
-   */
-  generateContent(prompt: string, model?: string): Promise<string>;
+interface AntigravitySSEData {
+  response?: {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{ text?: string }>;
+      };
+    }>;
+  };
+}
 
-  /**
-   * Chat with message history
-   * @param messages - Array of chat messages
-   * @param model - Optional model override
-   * @returns Generated response text
-   */
+export interface GeminiClient {
+  generateContent(prompt: string, model?: string): Promise<string>;
   chat(messages: ChatMessage[], model?: string): Promise<string>;
 }
 
-/**
- * GeminiClient implementation
- */
 class GeminiClientImpl implements GeminiClient {
   private readonly tokenManager: TokenManager;
   private readonly rotator: AccountRotator;
@@ -148,13 +148,7 @@ class GeminiClientImpl implements GeminiClient {
   }
 
   async generateContent(prompt: string, model?: string): Promise<string> {
-    const contents = [
-      {
-        role: "user",
-        parts: [{ text: prompt }],
-      },
-    ];
-
+    const contents = [{ role: "user", parts: [{ text: prompt }] }];
     return this.callApi(contents, model ?? DEFAULT_MODEL);
   }
 
@@ -163,14 +157,22 @@ class GeminiClientImpl implements GeminiClient {
       role: msg.role,
       parts: [{ text: msg.content }],
     }));
-
     return this.callApi(contents, model ?? DEFAULT_MODEL);
   }
 
-  /**
-   * Internal API call with retry and rotation logic
-   */
   private async callApi(
+    contents: Array<{ role: string; parts: Array<{ text: string }> }>,
+    model: string
+  ): Promise<string> {
+    const useAntigravity = isAntigravityModel(model);
+
+    if (useAntigravity) {
+      return this.callAntigravityApi(contents, model);
+    }
+    return this.callStandardApi(contents, model);
+  }
+
+  private async callStandardApi(
     contents: Array<{ role: string; parts: Array<{ text: string }> }>,
     model: string
   ): Promise<string> {
@@ -178,24 +180,13 @@ class GeminiClientImpl implements GeminiClient {
     let networkRetryCount = 0;
 
     while (networkRetryCount <= MAX_RETRIES) {
-      // Get next available account (may throw if all rate limited)
       const account = this.rotator.getNextAccount();
 
       try {
-        // Get access token for this account
         const accessToken = await this.tokenManager.getAccessToken(account.id);
+        const request: GeminiRequest = { contents, generationConfig: this.generationConfig };
+        const apiUrl = `${STANDARD_API_BASE_URL}/${model}:generateContent`;
 
-        // Build request
-        const request: GeminiRequest = {
-          contents,
-          generationConfig: this.generationConfig,
-        };
-
-        // Build API URL with model (select endpoint based on model)
-        const apiBaseUrl = getApiBaseUrl(model);
-        const apiUrl = `${apiBaseUrl}/${model}:generateContent`;
-
-        // Make API call
         const response = await fetch(apiUrl, {
           method: "POST",
           headers: {
@@ -205,104 +196,245 @@ class GeminiClientImpl implements GeminiClient {
           body: JSON.stringify(request),
         });
 
-        // Handle rate limit (429)
         if (response.status === 429) {
           const retryAfterHeader = response.headers.get("Retry-After");
           const retryAfterMs = retryAfterHeader
             ? parseInt(retryAfterHeader, 10) * 1000
             : DEFAULT_RATE_LIMIT_MS;
 
-          logger.warn("Rate limit hit", {
-            accountId: account.id,
-            retryAfterMs,
-          });
-
-          // Mark account as rate limited
+          logger.warn("Rate limit hit", { accountId: account.id, retryAfterMs });
           this.rotator.markRateLimited(account.id, retryAfterMs);
-
-          // Try next account (don't count as network retry)
           continue;
         }
 
-        // Handle other error responses
         if (!response.ok) {
           const errorData = (await response.json()) as GeminiResponse;
-          const errorMessage =
-            errorData.error?.message || `HTTP ${response.status}`;
+          const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
 
-          // Retry on 5xx errors
           if (response.status >= 500) {
             networkRetryCount++;
-            lastError = new ApiError(`Server error: ${errorMessage}`, {
-              status: response.status,
-            });
-
+            lastError = new ApiError(`Server error: ${errorMessage}`, { status: response.status });
             if (networkRetryCount <= MAX_RETRIES) {
               await this.delayFn(this.getBackoffDelay(networkRetryCount));
               continue;
             }
           }
-
-          throw new ApiError(`API error: ${errorMessage}`, {
-            status: response.status,
-          });
+          throw new ApiError(`API error: ${errorMessage}`, { status: response.status });
         }
 
-        // Parse successful response
         const data = (await response.json()) as GeminiResponse;
-        const text = this.extractResponseText(data);
-
-        // Update quota on success
+        const text = this.extractStandardResponseText(data);
         this.quotaTracker.incrementUsage(account.id);
-
         return text;
       } catch (error) {
-        // Handle RateLimitError from rotator (all accounts limited)
-        if (error instanceof RateLimitError) {
+        if (error instanceof RateLimitError || error instanceof ApiError) {
           throw error;
         }
-
-        // Handle ApiError (non-retryable)
-        if (error instanceof ApiError) {
-          throw error;
-        }
-
-        // Network error - retry with backoff
         networkRetryCount++;
         lastError = error instanceof Error ? error : new Error(String(error));
-
         logger.warn("Network error, retrying", {
           attempt: networkRetryCount,
           maxRetries: MAX_RETRIES,
           error: lastError.message,
         });
-
         if (networkRetryCount <= MAX_RETRIES) {
           await this.delayFn(this.getBackoffDelay(networkRetryCount));
         }
       }
     }
-
-    // All retries exhausted
     throw new ApiError(
       `Request failed after ${MAX_RETRIES} retries: ${lastError?.message || "Unknown error"}`,
       { retries: MAX_RETRIES }
     );
   }
 
-  /**
-   * Extract text from API response
-   */
-  private extractResponseText(data: GeminiResponse): string {
+  private async callAntigravityApi(
+    contents: Array<{ role: string; parts: Array<{ text: string }> }>,
+    model: string
+  ): Promise<string> {
+    let lastError: Error | null = null;
+    let networkRetryCount = 0;
+
+    while (networkRetryCount <= MAX_RETRIES) {
+      const account = this.rotator.getNextAccount();
+      const projectId = account.projectId;
+
+      if (!projectId) {
+        logger.warn("No projectId for Antigravity account, skipping", {
+          accountId: account.id,
+          email: account.email,
+        });
+        continue;
+      }
+
+      try {
+        const accessToken = await this.tokenManager.getAccessToken(account.id);
+        const request: AntigravityRequest = {
+          project: projectId,
+          requestId: generateRequestId(),
+          model: model,
+          userAgent: "antigravity",
+          requestType: "agent",
+          request: {
+            contents,
+            session_id: generateSessionId(),
+            generationConfig: {
+              responseModalities: ["TEXT"],
+              temperature: this.generationConfig?.temperature ?? 0.7,
+              maxOutputTokens: this.generationConfig?.maxOutputTokens ?? 4096,
+            },
+          },
+        };
+
+        // Track which endpoints returned 429 for THIS request
+        let rateLimitedEndpointCount = 0;
+        let lastRateLimitRetryMs = DEFAULT_RATE_LIMIT_MS;
+
+        for (const baseUrl of ANTIGRAVITY_API_BASE_URLS) {
+          try {
+            const apiUrl = `${baseUrl}/v1internal:streamGenerateContent?alt=sse`;
+
+            const response = await fetch(apiUrl, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+                "User-Agent": "antigravity",
+              },
+              body: JSON.stringify(request),
+            });
+
+            if (response.status === 429) {
+              const retryAfterHeader = response.headers.get("Retry-After");
+              const retryAfterMs = retryAfterHeader
+                ? parseInt(retryAfterHeader, 10) * 1000
+                : DEFAULT_RATE_LIMIT_MS;
+
+              logger.warn("Rate limit hit on Antigravity endpoint, trying next", {
+                accountId: account.id,
+                baseUrl,
+                retryAfterMs,
+              });
+              
+              // Track this endpoint's 429, but DON'T mark account yet
+              rateLimitedEndpointCount++;
+              lastRateLimitRetryMs = Math.max(lastRateLimitRetryMs, retryAfterMs);
+              continue; // Try next endpoint instead of breaking
+            }
+
+            if (response.status === 404 || response.status >= 500) {
+              logger.warn("Antigravity endpoint unavailable, trying next", {
+                baseUrl,
+                status: response.status,
+              });
+              continue;
+            }
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new ApiError(`Antigravity API error: ${errorText.slice(0, 500)}`, {
+                status: response.status,
+              });
+            }
+
+            const text = await this.parseAntigravitySSEResponse(response);
+            if (text) {
+              this.quotaTracker.incrementUsage(account.id);
+              logger.info("Antigravity generation complete", {
+                accountId: account.id,
+                model,
+                responseLength: text.length,
+              });
+              return text;
+            }
+
+            throw new ApiError("Empty response from Antigravity API", {});
+          } catch (error) {
+            if (error instanceof ApiError) throw error;
+            logger.warn("Antigravity endpoint error", {
+              baseUrl,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        // Only mark account as rate limited if ALL endpoints returned 429
+        if (rateLimitedEndpointCount === ANTIGRAVITY_API_BASE_URLS.length) {
+          logger.warn("All Antigravity endpoints rate limited, marking account", {
+            accountId: account.id,
+            retryAfterMs: lastRateLimitRetryMs,
+          });
+          this.rotator.markRateLimited(account.id, lastRateLimitRetryMs);
+        }
+
+        networkRetryCount++;
+        lastError = new ApiError("All Antigravity endpoints failed", {});
+        if (networkRetryCount <= MAX_RETRIES) {
+          await this.delayFn(this.getBackoffDelay(networkRetryCount));
+        }
+      } catch (error) {
+        if (error instanceof RateLimitError || error instanceof ApiError) {
+          throw error;
+        }
+        networkRetryCount++;
+        lastError = error instanceof Error ? error : new Error(String(error));
+        logger.warn("Antigravity network error, retrying", {
+          attempt: networkRetryCount,
+          maxRetries: MAX_RETRIES,
+          error: lastError.message,
+        });
+        if (networkRetryCount <= MAX_RETRIES) {
+          await this.delayFn(this.getBackoffDelay(networkRetryCount));
+        }
+      }
+    }
+
+    throw new ApiError(
+      `Antigravity request failed after ${MAX_RETRIES} retries: ${lastError?.message || "Unknown error"}`,
+      { retries: MAX_RETRIES }
+    );
+  }
+
+  private async parseAntigravitySSEResponse(response: Response): Promise<string> {
+    const fullResponse = await response.text();
+    let fullText = "";
+
+    for (const line of fullResponse.split("\n")) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine.startsWith("data:")) continue;
+
+      const jsonStr = trimmedLine.slice(5).trim();
+      if (!jsonStr || jsonStr === "[DONE]") continue;
+
+      try {
+        const data = JSON.parse(jsonStr) as AntigravitySSEData;
+        const candidates = data.response?.candidates;
+        if (!candidates?.length) continue;
+
+        const parts = candidates[0]?.content?.parts;
+        if (!parts) continue;
+
+        for (const part of parts) {
+          if (part.text) {
+            fullText += part.text;
+          }
+        }
+      } catch {
+        // JSON parse error - skip this line
+      }
+    }
+
+    return fullText;
+  }
+
+  private extractStandardResponseText(data: GeminiResponse): string {
     if (!data.candidates || data.candidates.length === 0) {
       throw new ApiError("Empty response: no candidates", { response: data });
     }
 
     const firstCandidate = data.candidates[0];
     if (!firstCandidate?.content?.parts || firstCandidate.content.parts.length === 0) {
-      throw new ApiError("Empty response: no content parts", {
-        response: data,
-      });
+      throw new ApiError("Empty response: no content parts", { response: data });
     }
 
     const text = firstCandidate.content.parts[0]?.text;
@@ -313,27 +445,15 @@ class GeminiClientImpl implements GeminiClient {
     return text;
   }
 
-  /**
-   * Calculate exponential backoff delay
-   */
   private getBackoffDelay(attempt: number): number {
-    // Exponential backoff: 1s, 2s, 4s, ...
     return BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
   }
 
-  /**
-   * Default delay implementation
-   */
   private defaultDelay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
-/**
- * Factory function to create a GeminiClient instance
- * @param config - Client configuration
- * @returns GeminiClient instance
- */
 export function createGeminiClient(config: GeminiClientConfig): GeminiClient {
   return new GeminiClientImpl(config);
 }

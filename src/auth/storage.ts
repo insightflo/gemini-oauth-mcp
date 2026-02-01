@@ -27,6 +27,7 @@ export const AccountSchema = z.object({
   accessToken: z.string().nullable(),
   accessTokenExpiry: z.number().nullable(),
   authMode: z.enum(["standard", "antigravity"]).optional().default("standard"),
+  projectId: z.string().nullable().optional(), // Antigravity project ID for API calls
   quota: QuotaStatusSchema,
   rateLimit: RateLimitStatusSchema,
   createdAt: z.number(),

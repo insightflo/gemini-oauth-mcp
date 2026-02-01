@@ -37,3 +37,9 @@ token.json
 *.tmp
 *.temp
 .cache/
+
+# Local testing guides with personal info
+TESTING_GUIDE.md
+
+# Local Claude Code settings
+.claude/

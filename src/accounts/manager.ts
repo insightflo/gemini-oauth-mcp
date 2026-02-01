@@ -16,21 +16,16 @@ export type AccountStatus = "active" | "ready" | "limited";
 /**
  * AccountManager interface for managing multiple OAuth accounts
  */
-export interface AccountManager {
-  /**
-   * Initialize manager by loading accounts from storage
-   */
-  initialize(): Promise<void>;
+export interface AddAccountOptions {
+  refreshToken: string;
+  email: string;
+  authMode?: "standard" | "antigravity";
+  projectId?: string;
+}
 
-  /**
-   * Add a new account with refresh token and email
-   * @param refreshToken - OAuth refresh token
-   * @param email - Account email address
-   * @param authMode - Authentication mode (standard or antigravity)
-   * @returns The created Account
-   * @throws AuthenticationError if email already exists
-   */
-  addAccount(refreshToken: string, email: string, authMode?: "standard" | "antigravity"): Promise<Account>;
+export interface AccountManager {
+  initialize(): Promise<void>;
+  addAccount(options: AddAccountOptions): Promise<Account>;
 
   /**
    * Get account by ID
@@ -112,10 +107,10 @@ class AccountManagerImpl implements AccountManager {
     }
   }
 
-  async addAccount(refreshToken: string, email: string, authMode: "standard" | "antigravity" = "standard"): Promise<Account> {
+  async addAccount(options: AddAccountOptions): Promise<Account> {
+    const { refreshToken, email, authMode = "standard", projectId } = options;
     await this.ensureInitialized();
 
-    // Check for duplicate email
     const existingAccount = this.data.accounts.find(
       (a: Account) => a.email.toLowerCase() === email.toLowerCase()
     );
@@ -134,6 +129,7 @@ class AccountManagerImpl implements AccountManager {
       accessToken: null,
       accessTokenExpiry: null,
       authMode,
+      projectId: projectId ?? null,
       quota: {
         requestsRemaining: null,
         tokensRemaining: null,
@@ -149,19 +145,16 @@ class AccountManagerImpl implements AccountManager {
       lastUsedAt: now,
     };
 
-    // Add account
     this.data.accounts.push(account);
     this.data.updatedAt = now;
 
-    // Set as active if this is the first account
     if (this.data.accounts.length === 1) {
       this.data.activeAccountId = account.id;
     }
 
-    // Save to storage
     await this.saveData();
 
-    logger.info("Account added", { accountId: account.id, email });
+    logger.info("Account added", { accountId: account.id, email, authMode, hasProjectId: !!projectId });
     return account;
   }
 

@@ -15,7 +15,6 @@ import {
 } from "../../src/tools/generate.js";
 import {
   createGeminiClient,
-  ANTIGRAVITY_URL,
   type DelayFn,
 } from "../../src/api/client.js";
 import { RateLimitError, ApiError } from "../../src/utils/errors.js";
@@ -186,8 +185,8 @@ describe("API Integration", () => {
       await handleChat({ message: "Test", model: "gemini-2.5-pro" }, context);
 
       const callArgs = mockFetch.mock.calls[0]!;
-      const body = JSON.parse(callArgs[1]!.body as string);
-      expect(body.model).toBe("gemini-2.5-pro");
+      const url = callArgs[0] as string;
+      expect(url).toContain("gemini-2.5-pro");
     });
 
     // @TEST P4-I1-T2.3 - Use default model when not specified
@@ -221,8 +220,8 @@ describe("API Integration", () => {
       await handleChat({ message: "Test" }, context);
 
       const callArgs = mockFetch.mock.calls[0]!;
-      const body = JSON.parse(callArgs[1]!.body as string);
-      expect(body.model).toBe(DEFAULT_CHAT_MODEL);
+      const url = callArgs[0] as string;
+      expect(url).toContain(DEFAULT_CHAT_MODEL);
     });
 
     // @TEST P4-I1-T2.4 - Format response with model and email

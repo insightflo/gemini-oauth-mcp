@@ -368,9 +368,8 @@ async function handleStandardAuth({
     };
   }
 
-  // Add account
   try {
-    await accountManager.addAccount(tokens.refreshToken, email, "standard");
+    await accountManager.addAccount({ refreshToken: tokens.refreshToken, email, authMode: "standard" });
   } catch (error) {
     if (error instanceof AuthenticationError) {
       return {
@@ -494,9 +493,13 @@ async function handleAntigravityAuth({
 
   const email = exchangeResult.email ?? "unknown@gmail.com";
 
-  // Add account
   try {
-    await accountManager.addAccount(exchangeResult.refresh, email, "antigravity");
+    await accountManager.addAccount({
+      refreshToken: exchangeResult.refresh,
+      email,
+      authMode: "antigravity",
+      projectId: exchangeResult.projectId || undefined,
+    });
   } catch (error) {
     if (error instanceof AuthenticationError) {
       return {

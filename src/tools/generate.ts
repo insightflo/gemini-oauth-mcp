@@ -5,7 +5,9 @@ import { z } from "zod";
 import type { GeminiClient } from "../api/client.js";
 import type { AccountRotator } from "../accounts/rotator.js";
 import { RateLimitError } from "../utils/errors.js";
-import { getDefaultModel } from "../utils/config.js";
+import { getDefaultModel, FALLBACK_DEFAULT_MODEL } from "../utils/config.js";
+
+export const DEFAULT_GENERATE_MODEL = FALLBACK_DEFAULT_MODEL;
 
 /**
  * Maximum retry attempts for rate limit

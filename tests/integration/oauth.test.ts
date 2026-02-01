@@ -150,10 +150,11 @@ describe("OAuth Integration", () => {
       expect(response.isError).toBe(false);
       expect(response.content[0].text).toContain("Successfully authenticated");
       expect(response.content[0].text).toContain("user@gmail.com");
-      expect(mockAccountManager.addAccount).toHaveBeenCalledWith(
-        "test-refresh-token",
-        "user@gmail.com"
-      );
+      expect(mockAccountManager.addAccount).toHaveBeenCalledWith({
+        refreshToken: "test-refresh-token",
+        email: "user@gmail.com",
+        authMode: "standard",
+      });
     });
 
     // @TEST P4-I1-T1.3 - Exchange auth code for tokens
@@ -226,10 +227,11 @@ describe("OAuth Integration", () => {
         },
       });
 
-      expect(addAccountSpy).toHaveBeenCalledWith(
-        "test-refresh-token",
-        "newuser@gmail.com"
-      );
+      expect(addAccountSpy).toHaveBeenCalledWith({
+        refreshToken: "test-refresh-token",
+        email: "newuser@gmail.com",
+        authMode: "standard",
+      });
     });
 
     // @TEST P4-I1-T1.5 - Handle user denial

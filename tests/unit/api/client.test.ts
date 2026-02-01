@@ -6,7 +6,6 @@ import {
   GeminiClient,
   createGeminiClient,
   ChatMessage,
-  ANTIGRAVITY_URL,
   DEFAULT_MODEL,
   MAX_RETRIES,
   DelayFn,
@@ -101,14 +100,8 @@ describe("GeminiClient", () => {
   });
 
   describe("constructor and exports", () => {
-    it("should export ANTIGRAVITY_URL constant", () => {
-      expect(ANTIGRAVITY_URL).toBe(
-        "https://autopush-aistudio-vertexaisearch.sandbox.google.com/api/v1/generateContent"
-      );
-    });
-
     it("should export DEFAULT_MODEL constant", () => {
-      expect(DEFAULT_MODEL).toBe("gemini-2.0-flash-exp");
+      expect(DEFAULT_MODEL).toBe("gemini-2.5-flash");
     });
 
     it("should export MAX_RETRIES constant", () => {
@@ -123,7 +116,7 @@ describe("GeminiClient", () => {
   });
 
   describe("generateContent", () => {
-    it("should call Antigravity API with correct headers", async () => {
+    it("should call standard API with correct headers", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -140,7 +133,7 @@ describe("GeminiClient", () => {
       await client.generateContent("Hello");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        ANTIGRAVITY_URL,
+        expect.stringContaining("generativelanguage.googleapis.com"),
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -168,8 +161,8 @@ describe("GeminiClient", () => {
       await client.generateContent("Test prompt");
 
       const callArgs = mockFetch.mock.calls[0]!;
-      const body = JSON.parse(callArgs[1]!.body as string);
-      expect(body.model).toBe(DEFAULT_MODEL);
+      const url = callArgs[0] as string;
+      expect(url).toContain(DEFAULT_MODEL);
     });
 
     it("should use custom model when specified", async () => {
@@ -189,8 +182,8 @@ describe("GeminiClient", () => {
       await client.generateContent("Test prompt", "gemini-1.5-pro");
 
       const callArgs = mockFetch.mock.calls[0]!;
-      const body = JSON.parse(callArgs[1]!.body as string);
-      expect(body.model).toBe("gemini-1.5-pro");
+      const url = callArgs[0] as string;
+      expect(url).toContain("gemini-1.5-pro");
     });
 
     it("should return response text from API", async () => {
@@ -340,8 +333,8 @@ describe("GeminiClient", () => {
       await client.chat(messages);
 
       const callArgs = mockFetch.mock.calls[0]!;
-      const body = JSON.parse(callArgs[1]!.body as string);
-      expect(body.model).toBe(DEFAULT_MODEL);
+      const url = callArgs[0] as string;
+      expect(url).toContain(DEFAULT_MODEL);
     });
 
     it("should use custom model for chat when specified", async () => {
@@ -362,8 +355,8 @@ describe("GeminiClient", () => {
       await client.chat(messages, "gemini-1.5-flash");
 
       const callArgs = mockFetch.mock.calls[0]!;
-      const body = JSON.parse(callArgs[1]!.body as string);
-      expect(body.model).toBe("gemini-1.5-flash");
+      const url = callArgs[0] as string;
+      expect(url).toContain("gemini-1.5-flash");
     });
   });
 
@@ -667,15 +660,12 @@ describe("GeminiClient", () => {
       const callArgs = mockFetch.mock.calls[0]!;
       const body = JSON.parse(callArgs[1]!.body as string);
 
-      expect(body).toEqual({
-        model: DEFAULT_MODEL,
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: "Test prompt" }],
-          },
-        ],
-      });
+      expect(body.contents).toEqual([
+        {
+          role: "user",
+          parts: [{ text: "Test prompt" }],
+        },
+      ]);
     });
 
     it("should include generationConfig when provided", async () => {

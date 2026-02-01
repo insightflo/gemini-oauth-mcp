@@ -3,13 +3,24 @@
 
 import * as crypto from "crypto";
 
-// Antigravity OAuth constants
-const ANTIGRAVITY_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
-const ANTIGRAVITY_CLIENT_SECRET = "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";
-const ANTIGRAVITY_REDIRECT_URI = "http://localhost:51121/oauth-callback";
+// Default Antigravity OAuth credentials (from opencode-antigravity-auth)
+// Users can override these via environment variables for custom OAuth apps
+const DEFAULT_ANTIGRAVITY_CLIENT_ID =
+  "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const DEFAULT_ANTIGRAVITY_CLIENT_SECRET = "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";
+const DEFAULT_ANTIGRAVITY_REDIRECT_URI = "http://localhost:51121/oauth-callback";
+
+// Antigravity OAuth constants - configurable via environment variables
+const ANTIGRAVITY_CLIENT_ID = process.env.GEMINI_CLIENT_ID ?? DEFAULT_ANTIGRAVITY_CLIENT_ID;
+const ANTIGRAVITY_CLIENT_SECRET =
+  process.env.GEMINI_CLIENT_SECRET ?? DEFAULT_ANTIGRAVITY_CLIENT_SECRET;
+const ANTIGRAVITY_REDIRECT_URI =
+  process.env.GEMINI_REDIRECT_URI ?? DEFAULT_ANTIGRAVITY_REDIRECT_URI;
 const ANTIGRAVITY_SCOPES = [
+  "openid",
+  "email",
+  "profile",
   "https://www.googleapis.com/auth/cloud-platform",
-  "https://www.googleapis.com/auth/userinfo.email",
 ];
 
 // Types
@@ -45,10 +56,7 @@ function generatePKCE(): { verifier: string; challenge: string } {
   const verifier = crypto.randomBytes(32).toString("base64url");
 
   // SHA256 hash of verifier, base64url encoded
-  const challenge = crypto
-    .createHash("sha256")
-    .update(verifier)
-    .digest("base64url");
+  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
 
   return { verifier, challenge };
 }
@@ -66,10 +74,7 @@ function encodeState(payload: { verifier: string; projectId: string }): string {
 function decodeState(state: string): { verifier: string; projectId: string } {
   // Handle both base64url and standard base64
   const normalized = state.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(
-    normalized.length + ((4 - (normalized.length % 4)) % 4),
-    "="
-  );
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
   const json = Buffer.from(padded, "base64").toString("utf8");
   const parsed = JSON.parse(json);
 
@@ -86,9 +91,7 @@ function decodeState(state: string): { verifier: string; projectId: string } {
 /**
  * Build the Antigravity OAuth authorization URL
  */
-export async function authorizeAntigravity(
-  projectId = ""
-): Promise<AntigravityAuthorization> {
+export async function authorizeAntigravity(projectId = ""): Promise<AntigravityAuthorization> {
   const pkce = generatePKCE();
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -148,14 +151,11 @@ export async function exchangeAntigravity(
     };
 
     // Get user info
-    const userInfoResponse = await fetch(
-      "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
-      {
-        headers: {
-          Authorization: `Bearer ${tokenPayload.access_token}`,
-        },
-      }
-    );
+    const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v1/userinfo?alt=json", {
+      headers: {
+        Authorization: `Bearer ${tokenPayload.access_token}`,
+      },
+    });
 
     const userInfo = userInfoResponse.ok
       ? ((await userInfoResponse.json()) as { email?: string })

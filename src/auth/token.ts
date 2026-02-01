@@ -213,15 +213,17 @@ class TokenManagerImpl implements TokenManager {
     }
   }
 
-  /**
-   * Call Google token endpoint to refresh access token
-   */
   private async callTokenEndpoint(
     refreshToken: string
   ): Promise<{ accessToken: string; expiresAt: number }> {
+    // Handle Antigravity format: refreshToken|projectId
+    const actualRefreshToken = refreshToken.includes("|")
+      ? refreshToken.split("|")[0]!
+      : refreshToken;
+
     const body = new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: refreshToken,
+      refresh_token: actualRefreshToken,
       client_id: this.clientId,
     });
 

@@ -63,7 +63,7 @@ describe("AccountManager", () => {
 
   describe("addAccount", () => {
     it("should add a new account with refresh token and email", async () => {
-      const account = await manager.addAccount("refresh_token_abc", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "refresh_token_abc", email: "user@example.com" });
 
       expect(account).toBeDefined();
       expect(account.email).toBe("user@example.com");
@@ -73,8 +73,8 @@ describe("AccountManager", () => {
     });
 
     it("should generate a unique UUID for the account", async () => {
-      const account1 = await manager.addAccount("token1", "user1@example.com");
-      const account2 = await manager.addAccount("token2", "user2@example.com");
+      const account1 = await manager.addAccount({ refreshToken: "token1", email: "user1@example.com" });
+      const account2 = await manager.addAccount({ refreshToken: "token2", email: "user2@example.com" });
 
       expect(account1.id).not.toBe(account2.id);
       expect(account1.id).toMatch(
@@ -83,7 +83,7 @@ describe("AccountManager", () => {
     });
 
     it("should set the first account as active automatically", async () => {
-      await manager.addAccount("token1", "user1@example.com");
+      await manager.addAccount({ refreshToken: "token1", email: "user1@example.com" });
 
       const active = manager.getActiveAccount();
       expect(active).toBeDefined();
@@ -91,15 +91,15 @@ describe("AccountManager", () => {
     });
 
     it("should not change active account when adding subsequent accounts", async () => {
-      await manager.addAccount("token1", "user1@example.com");
-      await manager.addAccount("token2", "user2@example.com");
+      await manager.addAccount({ refreshToken: "token1", email: "user1@example.com" });
+      await manager.addAccount({ refreshToken: "token2", email: "user2@example.com" });
 
       const active = manager.getActiveAccount();
       expect(active?.email).toBe("user1@example.com");
     });
 
     it("should initialize account with default quota and rate limit", async () => {
-      const account = await manager.addAccount("token", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
 
       expect(account.quota).toEqual({
         requestsRemaining: null,
@@ -115,9 +115,9 @@ describe("AccountManager", () => {
     });
 
     it("should throw error for duplicate email", async () => {
-      await manager.addAccount("token1", "same@example.com");
+      await manager.addAccount({ refreshToken: "token1", email: "same@example.com" });
 
-      await expect(manager.addAccount("token2", "same@example.com")).rejects.toThrow(
+      await expect(manager.addAccount({ refreshToken: "token2", email: "same@example.com" })).rejects.toThrow(
         AuthenticationError
       );
     });
@@ -125,7 +125,7 @@ describe("AccountManager", () => {
 
   describe("getAccount", () => {
     it("should return account by ID", async () => {
-      const added = await manager.addAccount("token", "user@example.com");
+      const added = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
 
       const found = manager.getAccount(added.id);
       expect(found).toBeDefined();
@@ -146,8 +146,8 @@ describe("AccountManager", () => {
     });
 
     it("should return all accounts", async () => {
-      await manager.addAccount("token1", "user1@example.com");
-      await manager.addAccount("token2", "user2@example.com");
+      await manager.addAccount({ refreshToken: "token1", email: "user1@example.com" });
+      await manager.addAccount({ refreshToken: "token2", email: "user2@example.com" });
 
       const accounts = manager.getAccounts();
       expect(accounts).toHaveLength(2);
@@ -156,7 +156,7 @@ describe("AccountManager", () => {
 
   describe("removeAccount", () => {
     it("should remove account by ID and return true", async () => {
-      const account = await manager.addAccount("token", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
 
       const result = manager.removeAccount(account.id);
 
@@ -171,7 +171,7 @@ describe("AccountManager", () => {
     });
 
     it("should clear active account when removing active account", async () => {
-      const account = await manager.addAccount("token", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
       expect(manager.getActiveAccount()).toBeDefined();
 
       manager.removeAccount(account.id);
@@ -180,8 +180,8 @@ describe("AccountManager", () => {
     });
 
     it("should set next account as active when removing active account with multiple accounts", async () => {
-      const account1 = await manager.addAccount("token1", "user1@example.com");
-      const account2 = await manager.addAccount("token2", "user2@example.com");
+      const account1 = await manager.addAccount({ refreshToken: "token1", email: "user1@example.com" });
+      const account2 = await manager.addAccount({ refreshToken: "token2", email: "user2@example.com" });
 
       expect(manager.getActiveAccount()?.id).toBe(account1.id);
 
@@ -193,8 +193,8 @@ describe("AccountManager", () => {
 
   describe("setActiveAccount", () => {
     it("should set the active account", async () => {
-      await manager.addAccount("token1", "user1@example.com");
-      const account2 = await manager.addAccount("token2", "user2@example.com");
+      await manager.addAccount({ refreshToken: "token1", email: "user1@example.com" });
+      const account2 = await manager.addAccount({ refreshToken: "token2", email: "user2@example.com" });
 
       manager.setActiveAccount(account2.id);
 
@@ -215,7 +215,7 @@ describe("AccountManager", () => {
     });
 
     it("should return active account", async () => {
-      const account = await manager.addAccount("token", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
 
       const active = manager.getActiveAccount();
       expect(active?.id).toBe(account.id);
@@ -224,7 +224,7 @@ describe("AccountManager", () => {
 
   describe("updateAccountStatus", () => {
     it("should update account status to 'active'", async () => {
-      const account = await manager.addAccount("token", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
 
       manager.updateAccountStatus(account.id, "active");
 
@@ -235,7 +235,7 @@ describe("AccountManager", () => {
     });
 
     it("should update account status to 'ready'", async () => {
-      const account = await manager.addAccount("token", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
 
       manager.updateAccountStatus(account.id, "ready");
 
@@ -244,7 +244,7 @@ describe("AccountManager", () => {
     });
 
     it("should update account status to 'limited'", async () => {
-      const account = await manager.addAccount("token", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
 
       manager.updateAccountStatus(account.id, "limited");
 
@@ -283,11 +283,10 @@ describe("AccountManager", () => {
 
   describe("edge cases", () => {
     it("should handle concurrent operations safely", async () => {
-      // Add multiple accounts concurrently
       const promises = [
-        manager.addAccount("token1", "user1@example.com"),
-        manager.addAccount("token2", "user2@example.com"),
-        manager.addAccount("token3", "user3@example.com"),
+        manager.addAccount({ refreshToken: "token1", email: "user1@example.com" }),
+        manager.addAccount({ refreshToken: "token2", email: "user2@example.com" }),
+        manager.addAccount({ refreshToken: "token3", email: "user3@example.com" }),
       ];
 
       const accounts = await Promise.all(promises);
@@ -297,7 +296,7 @@ describe("AccountManager", () => {
     });
 
     it("should preserve account data on update", async () => {
-      const account = await manager.addAccount("token", "user@example.com");
+      const account = await manager.addAccount({ refreshToken: "token", email: "user@example.com" });
 
       // Update status
       manager.updateAccountStatus(account.id, "limited");

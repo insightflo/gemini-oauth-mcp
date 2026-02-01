@@ -57,10 +57,30 @@ export OAUTH_PORT=51121
 # 가능한 값: debug, info, warn, error
 export LOG_LEVEL=info
 
-# 기본 모델 (기본값: gemini-3.0-flash)
-# 가능한 값: gemini-3.0-flash, gemini-3.0-pro, gemini-2.5-flash, gemini-2.5-pro
-export GEMINI_DEFAULT_MODEL=gemini-3.0-flash
+# 기본 모델 (기본값: gemini-2.5-flash)
+# Gemini 3.0 모델은 Antigravity 인증 필요
+export GEMINI_DEFAULT_MODEL=gemini-2.5-flash
 ```
+
+### 커스텀 OAuth 설정 (선택사항)
+
+기본적으로 내장된 OAuth 자격증명을 사용합니다. 자체 OAuth 앱을 사용하려면:
+
+1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials)에서 OAuth 2.0 클라이언트 ID 생성
+2. 애플리케이션 유형: **데스크톱 앱** 선택
+3. 승인된 리디렉션 URI 추가: `http://localhost:51121/oauth-callback`
+4. 다음 범위 활성화:
+   - `https://www.googleapis.com/auth/cloud-platform`
+   - `https://www.googleapis.com/auth/userinfo.email`
+5. 환경 변수 설정:
+
+```bash
+export GEMINI_CLIENT_ID=your-client-id.apps.googleusercontent.com
+export GEMINI_CLIENT_SECRET=your-client-secret
+export GEMINI_REDIRECT_URI=http://localhost:51121/oauth-callback  # 선택사항
+```
+
+**참고:** Gemini 3.0 모델(Antigravity 모드)은 특별한 OAuth 설정이 필요합니다. 기본 내장 자격증명을 사용하는 것을 권장합니다.
 
 ## MCP 설정
 
@@ -123,6 +143,7 @@ export GEMINI_DEFAULT_MODEL=gemini-3.0-flash
 ```
 
 **동작 방식:**
+
 1. PKCE와 State를 생성하여 OAuth 2.0 보안 강화
 2. 기본 브라우저에서 Google 인증 페이지 자동 열기
 3. 사용자가 Google 계정으로 로그인 및 권한 승인
@@ -131,6 +152,7 @@ export GEMINI_DEFAULT_MODEL=gemini-3.0-flash
 6. 토큰 저장 및 계정 등록
 
 **응답 예시:**
+
 ```
 [OK] Successfully authenticated!
 
@@ -148,6 +170,7 @@ export GEMINI_DEFAULT_MODEL=gemini-3.0-flash
 ```
 
 **응답 예시:**
+
 ```
 Registered Accounts (2)
 ═══════════════════════════════════════════════════════════
@@ -167,6 +190,7 @@ Status Legend:
 ```
 
 **상태 의미:**
+
 - **Active (●)**: 현재 사용 중인 계정
 - **Ready (○)**: 사용 가능한 상태의 계정
 - **Limited (◌)**: Rate Limit 상태, 리셋 대기 중
@@ -180,6 +204,7 @@ Status Legend:
 ```
 
 **응답 예시:**
+
 ```
 Authentication Status
 ═══════════════════════════════════════════════════════════
@@ -204,9 +229,11 @@ Authentication Status
 ```
 
 **파라미터:**
+
 - `account_id` (string): 제거할 계정의 ID 또는 이메일 주소
 
 **응답 예시:**
+
 ```
 ✓ Account removed
 
@@ -215,6 +242,7 @@ Authentication Status
 ```
 
 **제약 사항:**
+
 - 마지막 계정은 제거할 수 없습니다 (최소 1개 계정 필요)
 - 새 계정을 추가한 후 기존 계정을 제거하는 것을 권장합니다
 
@@ -227,16 +255,26 @@ Authentication Status
 ```
 
 **파라미터:**
+
 - `message` (string, 필수): 전송할 메시지
 - `model` (string, 선택): 사용할 모델명 (기본값: `gemini-3.0-flash`)
 
 **지원 모델:**
-- `gemini-3.0-flash` - Pro급 성능의 빠른 모델 (기본값)
-- `gemini-3.0-pro` - 최고급 추론 및 에이전틱 워크플로우
-- `gemini-2.5-flash` - 빠르고 비용 효율적
-- `gemini-2.5-pro` - 긴 컨텍스트 안정성
+
+| 모델 | 설명 | 인증 모드 |
+|------|------|----------|
+| `gemini-2.5-flash` | 빠르고 비용 효율적 (기본값) | standard |
+| `gemini-2.5-pro` | 긴 컨텍스트 안정성 | standard |
+| `gemini-2.0-flash` | 차세대 기능 | standard |
+| `gemini-1.5-flash` | 안정적인 빠른 모델 | standard |
+| `gemini-1.5-pro` | 안정적인 고성능 | standard |
+| `gemini-3.0-flash` | Pro급 성능의 빠른 모델 | antigravity |
+| `gemini-3.0-pro` | 최고급 추론 | antigravity |
+
+> **Note:** Gemini 3.0 모델은 Antigravity 인증이 필요합니다 (`auth_login mode="antigravity"`)
 
 **응답 예시:**
+
 ```
 [Gemini 2.5 Flash via user@gmail.com]
 
@@ -268,10 +306,12 @@ Rate Limit(429)이 발생하면 자동으로 다음 계정으로 전환됩니다
 ```
 
 **파라미터:**
+
 - `prompt` (string, 필수): 콘텐츠 생성 프롬프트
 - `model` (string, 선택): 사용할 모델명 (기본값: `gemini-3.0-flash`)
 
 **응답 예시:**
+
 ```
 [Gemini 2.5 Flash via user@gmail.com]
 
@@ -299,6 +339,7 @@ Rate Limit(429)이 발생하면 자동으로 다음 계정으로 전환됩니다
 ```
 
 **응답 예시:**
+
 ```
 Current Configuration
 ═══════════════════════════════════════════════════════════
@@ -327,21 +368,38 @@ Available Models:
 ```
 
 **파라미터:**
+
 - `key` (string, 필수): 설정 키 (`default_model`)
 - `value` (string, 필수): 설정 값
 
 **응답 예시:**
+
 ```
 ✓ Default model set to: gemini-3.0-pro
 
 This setting is saved and will persist across sessions.
 ```
 
-**지원 모델:**
-- `gemini-3.0-flash` - Pro급 성능의 빠른 모델 (기본값)
-- `gemini-3.0-pro` - 최고급 추론 및 에이전틱 워크플로우
-- `gemini-2.5-flash` - 빠르고 비용 효율적
-- `gemini-2.5-pro` - 긴 컨텍스트 안정성
+**지원 모델:** 위 '대화형 응답 생성' 섹션의 모델 테이블 참조
+
+### 빠른 모델 전환
+
+단축 도구로 기본 모델을 빠르게 전환할 수 있습니다:
+
+```
+사용자: use_flash 실행해줘   → gemini-3.0-flash로 전환
+사용자: use_pro 실행해줘    → gemini-3.0-pro로 전환
+사용자: use_flash_20 실행해줘 → gemini-2.0-flash로 전환
+사용자: use_flash_15 실행해줘 → gemini-1.5-flash로 전환
+사용자: use_pro_15 실행해줘  → gemini-1.5-pro로 전환
+```
+
+또는 `model` 도구로 현재 모델 확인 및 변경:
+
+```
+사용자: model 실행해줘              → 현재 기본 모델 표시
+사용자: model name="gemini-2.5-pro" → 해당 모델로 변경
+```
 
 ### 할당량 확인
 
@@ -352,6 +410,7 @@ This setting is saved and will persist across sessions.
 ```
 
 **응답 예시:**
+
 ```
 Quota Status
 ═══════════════════════════════════════════════════════════
@@ -374,6 +433,7 @@ Quota Status
 ```
 
 **표시 항목:**
+
 - **Account**: 이메일 주소 (20자까지 표시, 초과시 "..." 처리)
 - **Requests**: 사용한 요청 수 / 제한량
 - **Status**: 프로그레스 바 및 사용률/제한 상태
@@ -386,9 +446,11 @@ Quota Status
 ### 인증 실패
 
 #### "Authentication timed out"
+
 **원인:** 5분 내에 Google 인증을 완료하지 못했습니다.
 
 **해결 방법:**
+
 ```bash
 # auth_login 다시 실행
 # 브라우저에서 Google 인증 완료 (5분 내)
@@ -397,17 +459,21 @@ export OAUTH_PORT=51121
 ```
 
 #### "User denied access"
+
 **원인:** Google 인증 페이지에서 "거부"를 선택했습니다.
 
 **해결 방법:**
+
 1. 다시 `auth_login` 실행
 2. Google 인증 페이지에서 "계속" 또는 "허용" 선택
 3. 요구되는 권한 승인
 
 #### "Failed to get user info"
+
 **원인:** 인증은 성공했지만 사용자 정보 조회 실패
 
 **해결 방법:**
+
 1. Google 계정의 인터넷 연결 확인
 2. 다시 `auth_login` 시도
 3. 다른 Google 계정으로 시도
@@ -415,16 +481,19 @@ export OAUTH_PORT=51121
 ### Rate Limit (429 에러)
 
 #### "All accounts are rate limited"
+
 **원인:** 등록된 모든 계정이 Rate Limit 상태입니다.
 
 **해결 방법:**
 
 1. **새 계정 추가:**
+
    ```
    auth_login을 실행하여 새로운 Google 계정 추가
    ```
 
 2. **대기:**
+
    ```
    quota_status로 리셋 시간 확인 후 대기
    ```
@@ -445,16 +514,19 @@ export OAUTH_PORT=51121
 ### 연결 오류
 
 #### "Failed to start MCP server"
+
 **원인:** 서버 시작 실패, 포트 충돌 가능
 
 **해결 방법:**
 
 1. **포트 변경:**
+
    ```bash
    export OAUTH_PORT=51122
    ```
 
 2. **포트 충돌 확인 (macOS/Linux):**
+
    ```bash
    lsof -i :51121
    ```
@@ -467,11 +539,13 @@ export OAUTH_PORT=51121
    ```
 
 #### "Connection refused"
+
 **원인:** MCP 클라이언트가 서버와 연결할 수 없음
 
 **해결 방법:**
 
 1. **서버 실행 확인:**
+
    ```bash
    # 새 터미널에서 서버 수동 실행
    npm run build && node dist/index.js
@@ -482,6 +556,7 @@ export OAUTH_PORT=51121
    - Cursor: `.cursor/mcp.json`
 
 3. **명령어 경로 확인:**
+
    ```bash
    # npx 설치 확인
    which npx
@@ -493,11 +568,13 @@ export OAUTH_PORT=51121
 ### 토큰 갱신 오류
 
 #### "Token refresh failed"
+
 **원인:** Refresh Token으로 새 Access Token을 획득하지 못했습니다.
 
 **해결 방법:**
 
 1. **계정 재인증:**
+
    ```
    계정 제거: auth_remove user@gmail.com
    계정 추가: auth_login
@@ -611,6 +688,7 @@ npm run typecheck
 ### 새로운 도구 추가
 
 1. **도구 정의 및 구현** (`src/tools/new-tool.ts`):
+
    ```typescript
    import { z } from "zod";
 
@@ -622,9 +700,7 @@ npm run typecheck
      }),
    };
 
-   export async function handleNewTool(
-     args: { param: string }
-   ): Promise<ToolResponse> {
+   export async function handleNewTool(args: { param: string }): Promise<ToolResponse> {
      // 구현
      return {
        content: [{ type: "text", text: "결과" }],
@@ -633,14 +709,11 @@ npm run typecheck
    ```
 
 2. **서버에 등록** (`src/server.ts`):
+
    ```typescript
    import { newTool, handleNewTool } from "./tools/new-tool.js";
 
-   server.registerTool(
-     newTool.name,
-     newTool,
-     handleNewTool
-   );
+   server.registerTool(newTool.name, newTool, handleNewTool);
    ```
 
 3. **테스트 추가** (`tests/integration/new-tool.test.ts`):
@@ -657,17 +730,42 @@ npm run typecheck
 
 ### MCP 도구 목록
 
+**인증 관련**
+
 | 도구명 | 입력 | 설명 |
 |--------|------|------|
-| `auth_login` | 없음 | Google 계정 추가 |
+| `auth_login` | `mode?` | Google 계정 추가 (mode: "standard" \| "antigravity") |
 | `auth_list` | 없음 | 등록된 계정 목록 |
 | `auth_remove` | `account_id` | 계정 제거 |
 | `auth_status` | 없음 | 인증 상태 확인 |
+
+**생성 관련**
+
+| 도구명 | 입력 | 설명 |
+|--------|------|------|
 | `chat` | `message`, `model?` | 대화형 응답 |
 | `generate_content` | `prompt`, `model?` | 콘텐츠 생성 |
-| `quota_status` | 없음 | 할당량 현황 |
+| `gemini_generate_text` | `prompt`, `model?` | generate_content 별칭 |
+
+**설정 관련**
+
+| 도구명 | 입력 | 설명 |
+|--------|------|------|
 | `config_get` | 없음 | 현재 설정 확인 |
-| `config_set` | `key`, `value` | 설정 변경 (기본 모델 등) |
+| `config_set` | `key`, `value` | 설정 변경 |
+| `model` | `name?` | 기본 모델 확인/변경 |
+| `use_flash` | 없음 | gemini-3.0-flash로 전환 |
+| `use_pro` | 없음 | gemini-3.0-pro로 전환 |
+| `use_flash_20` | 없음 | gemini-2.0-flash로 전환 |
+| `use_flash_15` | 없음 | gemini-1.5-flash로 전환 |
+| `use_pro_15` | 없음 | gemini-1.5-pro로 전환 |
+
+**모니터링**
+
+| 도구명 | 입력 | 설명 |
+|--------|------|------|
+| `quota_status` | 없음 | 할당량 현황 |
+| `ping` | 없음 | 서버 상태 확인 |
 
 ### 응답 형식
 
